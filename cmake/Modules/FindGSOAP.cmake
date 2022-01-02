@@ -40,18 +40,6 @@ find_library(GSOAP_SSL_CXX_LIBRARIES
 	DOC "The ssl gsoap library"
 )
 
-#find_library(GSOAP_C_LIBRARIES
-#	NAMES gsoap
-#	HINTS ${GSOAP_ROOT}/lib ${GSOAP_ROOT}/lib64
-#		  ${GSOAP_ROOT}/lib32
-#	DOC "The main gsoap library"
-#)
-#find_library(GSOAP_SSL_C_LIBRARIES
-#	NAMES gsoapssl
-#	HINTS ${GSOAP_ROOT}/lib ${GSOAP_ROOT}/lib64
-#		  ${GSOAP_ROOT}/lib32
-#	DOC "The ssl gsoap library"
-#)
 
 # -----------------------------------------------------
 # GSOAP Include Directories
@@ -115,7 +103,6 @@ include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(GSOAP DEFAULT_MSG GSOAP_CXX_LIBRARIES
 	GSOAP_INCLUDE_DIR GSOAP_WSDL2H GSOAP_SOAPCPP2)
 mark_as_advanced(GSOAP_INCLUDE_DIR GSOAP_LIBRARIES GSOAP_WSDL2H GSOAP_SOAPCPP2)
-
 
 if(GSOAP_FOUND AND GSOAP_FIND_REQUIRED AND GSOAP_FIND_VERSION AND ${GSOAP_VERSION} VERSION_LESS ${GSOAP_FIND_VERSION})
 	message(SEND_ERROR "Found GSOAP version ${GSOAP_VERSION} less then required ${GSOAP_FIND_VERSION}.")
