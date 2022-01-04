@@ -30,7 +30,7 @@ int main()
 
   // create a context with strict XML validation and exclusive XML canonicalization for WS-Security enabled
   struct soap *soap = soap_new();
-  soap->connect_timeout = soap->recv_timeout = soap->send_timeout = 60; // 10 sec
+  soap->connect_timeout = soap->recv_timeout = soap->send_timeout = 10; // 10 sec
   soap_register_plugin(soap, soap_wsse);
 
   PullPointSubscriptionBindingProxy proxyEvent(soap);
@@ -40,6 +40,7 @@ int main()
   _tev__CreatePullPointSubscriptionResponse response;
   if (proxyEvent.CreatePullPointSubscription(&request, response) != SOAP_OK) {
     soap_stream_fault(soap, std::cerr);
+    return -1;
   } else {
     std::cout << "Termination time " << response.wsnt__TerminationTime << std::endl;
     std::cout << "Current time " << response.wsnt__CurrentTime << std::endl;
@@ -47,35 +48,39 @@ int main()
 
   _tev__PullMessages tev__PullMessages;
   _tev__PullMessagesResponse tev__PullMessagesResponse;
-  tev__PullMessages.Timeout = "PT600S";
+  tev__PullMessages.Timeout = "PT900S";
   tev__PullMessages.MessageLimit = 100;
   //Empty the stored messages
   set_credentials(soap);
   if (proxyEvent.PullMessages(response.SubscriptionReference.Address, NULL, &tev__PullMessages, tev__PullMessagesResponse) != SOAP_OK) {
     soap_stream_fault(soap, std::cerr);
+    return -1;
   }
-  for(int i=0; i< 100; i++){
+  for(int i=0; i< 10; i++){
     set_credentials(soap);
     if (proxyEvent.PullMessages(response.SubscriptionReference.Address, NULL, &tev__PullMessages, tev__PullMessagesResponse) != SOAP_OK) {
       soap_stream_fault(soap, std::cerr);
     }
     for (auto msg : tev__PullMessagesResponse.wsnt__NotificationMessage) {
-      if (msg->Topic->__any.text != NULL && std::strstr(msg->Topic->__any.text, "MotionAlarm")) {
-        if (msg->Message.__any.elts != NULL &&
-        msg->Message.__any.elts->next != NULL &&
-        msg->Message.__any.elts->next->elts != NULL &&
-        msg->Message.__any.elts->next->elts->atts != NULL &&
-        msg->Message.__any.elts->next->elts->atts->next != NULL &&
-        msg->Message.__any.elts->next->elts->atts->next->text != NULL) {
-          if (strcmp(msg->Message.__any.elts->next->elts->atts->next->text, "true") == 0) {
-          std::cout << " Event Start " << std::endl;
-          } else {
-          std::cout << " Event End " << std::endl;
-          }
+      if (msg->Topic->__any.text != NULL &&
+      std::strstr(msg->Topic->__any.text, "MotionAlarm") &&
+      msg->Message.__any.elts != NULL &&
+      msg->Message.__any.elts->next != NULL &&
+      msg->Message.__any.elts->next->elts != NULL &&
+      msg->Message.__any.elts->next->elts->atts != NULL &&
+      msg->Message.__any.elts->next->elts->atts->next != NULL &&
+      msg->Message.__any.elts->next->elts->atts->next->text != NULL) {
+        if (strcmp(msg->Message.__any.elts->next->elts->atts->next->text, "true") == 0) {
+        std::cout << " Event Start " << std::endl;
+        } else {
+        std::cout << " Event End " << std::endl;
         }
       }
     }
   }
+  _wsnt__Unsubscribe wsnt__Unsubscribe;
+  _wsnt__UnsubscribeResponse wsnt__UnsubscribeResponse;
+  proxyEvent.Unsubscribe(response.SubscriptionReference.Address, NULL, &wsnt__Unsubscribe, wsnt__UnsubscribeResponse);
   // free all deserialized and managed data, we can still reuse the context and proxies after this
   soap_destroy(soap);
   soap_end(soap);
