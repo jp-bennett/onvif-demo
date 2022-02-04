@@ -3,12 +3,35 @@
 #include "wsdd.nsmap"
 #include <cstring>
 #include <sstream>
+#include <csignal>
 
 #define USERNAME "admin"
 #define PASSWORD "Password"
-#define HOSTNAME "http://10.0.1.187/onvif/device_service"
 
 
+//add cli option handling
+
+//add password prompt
+
+//add verbosity flag
+
+struct soap *soap = nullptr;
+PullPointSubscriptionBindingProxy proxyEvent;
+std::string subscription_endpoint;
+
+void signalHandler(int signum) {
+  std::cout << "\nInterrupted, cleaning up and closing." << std::endl;
+
+  _wsnt__Unsubscribe wsnt__Unsubscribe;
+  _wsnt__UnsubscribeResponse wsnt__UnsubscribeResponse;
+  proxyEvent.Unsubscribe(subscription_endpoint.c_str(), NULL, &wsnt__Unsubscribe, wsnt__UnsubscribeResponse);
+  // free all deserialized and managed data, we can still reuse the context and proxies after this
+  soap_destroy(soap);
+  soap_end(soap);
+  soap_free(soap);
+
+  exit(signum);
+}
 // to report an error
 void report_error(struct soap *soap)
 {
@@ -27,13 +50,13 @@ void set_credentials(struct soap *soap)
 
 int main()
 {
-
+signal(SIGINT, signalHandler);
   // create a context with strict XML validation and exclusive XML canonicalization for WS-Security enabled
-  struct soap *soap = soap_new();
+  soap = soap_new();
   soap->connect_timeout = soap->recv_timeout = soap->send_timeout = 10; // 10 sec
   soap_register_plugin(soap, soap_wsse);
 
-  PullPointSubscriptionBindingProxy proxyEvent(soap);
+  proxyEvent = PullPointSubscriptionBindingProxy(soap);
   proxyEvent.soap_endpoint = "http://10.0.1.187/onvif/Events";
   set_credentials(soap);
   _tev__CreatePullPointSubscription request;
@@ -44,6 +67,7 @@ int main()
   } else {
     std::cout << "Termination time " << response.wsnt__TerminationTime << std::endl;
     std::cout << "Current time " << response.wsnt__CurrentTime << std::endl;
+    subscription_endpoint = response.SubscriptionReference.Address;
   }
 
   _tev__PullMessages tev__PullMessages;
@@ -52,13 +76,13 @@ int main()
   tev__PullMessages.MessageLimit = 100;
   //Empty the stored messages
   set_credentials(soap);
-  if (proxyEvent.PullMessages(response.SubscriptionReference.Address, NULL, &tev__PullMessages, tev__PullMessagesResponse) != SOAP_OK) {
+  if (proxyEvent.PullMessages(subscription_endpoint.c_str(), NULL, &tev__PullMessages, tev__PullMessagesResponse) != SOAP_OK) {
     soap_stream_fault(soap, std::cerr);
     return -1;
   }
   for(int i=0; i< 10; i++){
     set_credentials(soap);
-    if (proxyEvent.PullMessages(response.SubscriptionReference.Address, NULL, &tev__PullMessages, tev__PullMessagesResponse) != SOAP_OK) {
+    if (proxyEvent.PullMessages(subscription_endpoint.c_str(), NULL, &tev__PullMessages, tev__PullMessagesResponse) != SOAP_OK) {
       soap_stream_fault(soap, std::cerr);
     }
     for (auto msg : tev__PullMessagesResponse.wsnt__NotificationMessage) {
@@ -71,16 +95,28 @@ int main()
       msg->Message.__any.elts->next->elts->atts->next != NULL &&
       msg->Message.__any.elts->next->elts->atts->next->text != NULL) {
         if (strcmp(msg->Message.__any.elts->next->elts->atts->next->text, "true") == 0) {
-        std::cout << " Event Start " << std::endl;
+          std::cout << msg->Message.__any.elts->next->elts->atts->text << std::endl;
+          std::stringstream ss;
+          soap->os = &ss; // assign a stringstream to write output to
+          soap_write__tev__PullMessagesResponse(soap, &tev__PullMessagesResponse);
+          soap->os = NULL; // no longer writing to the stream
+          std::cout << "The XML is:\n" << ss.str() << "\n\n";
+
         } else {
-        std::cout << " Event End " << std::endl;
+
+          std::cout << " Event End " << std::endl;
+          std::stringstream ss;
+          soap->os = &ss; // assign a stringstream to write output to
+          soap_write__tev__PullMessagesResponse(soap, &tev__PullMessagesResponse);
+          soap->os = NULL; // no longer writing to the stream
+          std::cout << "The XML is:\n" << ss.str() << "\n\n";
         }
       }
     }
   }
   _wsnt__Unsubscribe wsnt__Unsubscribe;
   _wsnt__UnsubscribeResponse wsnt__UnsubscribeResponse;
-  proxyEvent.Unsubscribe(response.SubscriptionReference.Address, NULL, &wsnt__Unsubscribe, wsnt__UnsubscribeResponse);
+  proxyEvent.Unsubscribe(subscription_endpoint.c_str(), NULL, &wsnt__Unsubscribe, wsnt__UnsubscribeResponse);
   // free all deserialized and managed data, we can still reuse the context and proxies after this
   soap_destroy(soap);
   soap_end(soap);

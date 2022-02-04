@@ -54,7 +54,8 @@ add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/generated/soapPullPointSubscriptionBindingProxy.cpp
     COMMAND ${GSOAP_WSDL2H} -d -P -O2 -o ${CMAKE_BINARY_DIR}/generated/bindings.h http://www.onvif.org/onvif/ver10/events/wsdl/event.wsdl
     COMMAND echo '\#import \"wsse.h\"' >> ${CMAKE_BINARY_DIR}/generated/bindings.h
-    COMMAND ${GSOAP_SOAPCPP2} -2 -C -I ${GSOAP_PLUGIN_DIR}/.. -I ${GSOAP_PLUGIN_DIR}/../import/ -d ${CMAKE_BINARY_DIR}/generated -j -x ${CMAKE_BINARY_DIR}/generated/bindings.h
+    COMMAND echo '\#import \"struct_timeval.h\"' >> ${CMAKE_BINARY_DIR}/generated/bindings.h
+    COMMAND ${GSOAP_SOAPCPP2} -2 -C -I ${GSOAP_PLUGIN_DIR}/.. -I ${GSOAP_PLUGIN_DIR}/../import/ -I ${GSOAP_PLUGIN_DIR}/../custom/ -d ${CMAKE_BINARY_DIR}/generated -j -x ${CMAKE_BINARY_DIR}/generated/bindings.h
     COMMAND ${GSOAP_SOAPCPP2} -a -x -L -pwsdd -I ${GSOAP_PLUGIN_DIR}/../import ${GSOAP_PLUGIN_DIR}/../import/wsdd5.h
     COMMENT "CREATING STUBS AND GLUE CODE"
 )
