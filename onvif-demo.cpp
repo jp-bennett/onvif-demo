@@ -4,31 +4,41 @@
 #include <cstring>
 #include <sstream>
 #include <csignal>
+#include <termios.h>
+#include <unistd.h>
 
 #define USERNAME "admin"
-#define PASSWORD "Password"
 
-
-//add cli option handling
-
-//add password prompt
 
 //add verbosity flag
 
 struct soap *soap = nullptr;
 PullPointSubscriptionBindingProxy proxyEvent;
 std::string subscription_endpoint;
+std::string password;
+std::string username;
+std::string onvif_url;
+
+bool verboseFlag = false;
 
 void signalHandler(int signum) {
   std::cout << "\nInterrupted, cleaning up and closing." << std::endl;
 
-  _wsnt__Unsubscribe wsnt__Unsubscribe;
-  _wsnt__UnsubscribeResponse wsnt__UnsubscribeResponse;
-  proxyEvent.Unsubscribe(subscription_endpoint.c_str(), NULL, &wsnt__Unsubscribe, wsnt__UnsubscribeResponse);
-  // free all deserialized and managed data, we can still reuse the context and proxies after this
-  soap_destroy(soap);
-  soap_end(soap);
-  soap_free(soap);
+  if (!subscription_endpoint.empty()) {
+    _wsnt__Unsubscribe wsnt__Unsubscribe;
+    _wsnt__UnsubscribeResponse wsnt__UnsubscribeResponse;
+    proxyEvent.Unsubscribe(subscription_endpoint.c_str(), NULL, &wsnt__Unsubscribe, wsnt__UnsubscribeResponse);
+  }
+  if (soap) {
+    soap_destroy(soap);
+    soap_end(soap);
+    soap_free(soap);
+  }
+
+  struct termios tty;
+  tcgetattr(STDIN_FILENO, &tty);
+  tty.c_lflag |= ECHO;
+  tcsetattr(STDIN_FILENO, TCSANOW, &tty);
 
   exit(signum);
 }
@@ -43,21 +53,57 @@ void set_credentials(struct soap *soap)
 {
   soap_wsse_delete_Security(soap);
   if (soap_wsse_add_Timestamp(soap, "Time", 10)
-   || soap_wsse_add_UsernameTokenDigest(soap, "Auth", USERNAME, PASSWORD))
+   || soap_wsse_add_UsernameTokenDigest(soap, "Auth", username.c_str(), password.c_str()))
     report_error(soap);
 }
 
+void usage() {
+  std::cerr << "Usage:" << std::endl;
+  std::cerr << "onvif-demo [onvif-url] -u [username]" << std::endl;
+  std::cerr << "Example: onvif-demo http://10.0.1.187/onvif -u admin" << std::endl;
+  exit(1);
+}
 
-int main()
+int main(int argc, char** argv)
 {
-signal(SIGINT, signalHandler);
-  // create a context with strict XML validation and exclusive XML canonicalization for WS-Security enabled
+  int c;
+  signal(SIGINT, signalHandler);
+
+
+  while ((c = getopt(argc, argv, "vhu:")) != -1)
+    switch (c) {
+      case 'v':
+        verboseFlag = true;
+        break;
+      case 'u':
+        username = optarg;
+        break;
+      case 'h':
+        usage();
+        break;
+    }
+  if (optind >= argc) usage();
+  onvif_url = argv[optind];
+  onvif_url += "/Events";
+  //check for valid config
+  if (username.empty() || onvif_url.empty()) usage();
+
+  std::cout << "Password: ";
+  struct termios tty; //get password without echo, https://stackoverflow.com/questions/1413445/reading-a-password-from-stdcin
+  tcgetattr(STDIN_FILENO, &tty);
+  tty.c_lflag &= ~ECHO;
+  tcsetattr(STDIN_FILENO, TCSANOW, &tty);
+  std::cin >> password;
+  tty.c_lflag |= ECHO;
+  tcsetattr(STDIN_FILENO, TCSANOW, &tty);
+  std::cout << std::endl;
+
   soap = soap_new();
   soap->connect_timeout = soap->recv_timeout = soap->send_timeout = 10; // 10 sec
   soap_register_plugin(soap, soap_wsse);
 
   proxyEvent = PullPointSubscriptionBindingProxy(soap);
-  proxyEvent.soap_endpoint = "http://10.0.1.187/onvif/Events";
+  proxyEvent.soap_endpoint = onvif_url.c_str();
   set_credentials(soap);
   _tev__CreatePullPointSubscription request;
   _tev__CreatePullPointSubscriptionResponse response;
