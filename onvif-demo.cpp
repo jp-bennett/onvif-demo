@@ -18,7 +18,7 @@ std::string subscription_endpoint;
 std::string password;
 std::string username;
 std::string onvif_url;
-
+std::stringstream ss;
 bool verboseFlag = false;
 
 void signalHandler(int signum) {
@@ -60,6 +60,7 @@ void set_credentials(struct soap *soap)
 void usage() {
   std::cerr << "Usage:" << std::endl;
   std::cerr << "onvif-demo [onvif-url] -u [username]" << std::endl;
+  std::cerr << "-v verbose mode" << std::endl;
   std::cerr << "Example: onvif-demo http://10.0.1.187/onvif -u admin" << std::endl;
   exit(1);
 }
@@ -108,12 +109,16 @@ int main(int argc, char** argv)
   _tev__CreatePullPointSubscription request;
   _tev__CreatePullPointSubscriptionResponse response;
   if (proxyEvent.CreatePullPointSubscription(&request, response) != SOAP_OK) {
+    std::cout << "Subscription Failed:" << std::endl;
     soap_stream_fault(soap, std::cerr);
     return -1;
   } else {
-    std::cout << "Termination time " << response.wsnt__TerminationTime << std::endl;
-    std::cout << "Current time " << response.wsnt__CurrentTime << std::endl;
+    std::cout << "Subscription successful!" << std::endl;
     subscription_endpoint = response.SubscriptionReference.Address;
+    if (verboseFlag) {
+      std::cout << "Termination time " << response.wsnt__TerminationTime << std::endl;
+      std::cout << "Current time " << response.wsnt__CurrentTime << std::endl;
+    }
   }
 
   _tev__PullMessages tev__PullMessages;
@@ -125,6 +130,12 @@ int main(int argc, char** argv)
   if (proxyEvent.PullMessages(subscription_endpoint.c_str(), NULL, &tev__PullMessages, tev__PullMessagesResponse) != SOAP_OK) {
     soap_stream_fault(soap, std::cerr);
     return -1;
+  }
+  if (verboseFlag) {
+    soap->os = &ss; // assign a stringstream to write output to
+    soap_write__tev__PullMessagesResponse(soap, &tev__PullMessagesResponse);
+    soap->os = NULL; // no longer writing to the stream
+    std::cout << "The XML is:\n" << ss.str() << "\n\n";
   }
   for(int i=0; i< 10; i++){
     set_credentials(soap);
@@ -142,16 +153,24 @@ int main(int argc, char** argv)
       msg->Message.__any.elts->next->elts->atts->next->text != NULL) {
         if (strcmp(msg->Message.__any.elts->next->elts->atts->next->text, "true") == 0) {
           std::cout << msg->Message.__any.elts->next->elts->atts->text << std::endl;
-          std::stringstream ss;
-          soap->os = &ss; // assign a stringstream to write output to
-          soap_write__tev__PullMessagesResponse(soap, &tev__PullMessagesResponse);
-          soap->os = NULL; // no longer writing to the stream
-          std::cout << "The XML is:\n" << ss.str() << "\n\n";
+          if (verboseFlag) {
+            soap->os = &ss; // assign a stringstream to write output to
+            soap_write__tev__PullMessagesResponse(soap, &tev__PullMessagesResponse);
+            soap->os = NULL; // no longer writing to the stream
+            std::cout << "The XML is:\n" << ss.str() << "\n\n";
+          }
 
         } else {
-
           std::cout << " Event End " << std::endl;
-          std::stringstream ss;
+          if (verboseFlag) {
+            soap->os = &ss; // assign a stringstream to write output to
+            soap_write__tev__PullMessagesResponse(soap, &tev__PullMessagesResponse);
+            soap->os = NULL; // no longer writing to the stream
+            std::cout << "The XML is:\n" << ss.str() << "\n\n";
+          }
+        }
+      } else { //not a subscribe message
+        if (verboseFlag) {
           soap->os = &ss; // assign a stringstream to write output to
           soap_write__tev__PullMessagesResponse(soap, &tev__PullMessagesResponse);
           soap->os = NULL; // no longer writing to the stream
